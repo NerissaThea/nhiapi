@@ -24,7 +24,7 @@ CORS(app, resources={
 
 # Etherscan API configuration
 ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY")
-ETHERSCAN_API_URL = os.getenv("ETHERSCAN_API_URL", "https://api.etherscan.io/api")
+ETHERSCAN_API_URL = os.getenv("https://api.etherscan.io/api")
 
 def fetch_transactions(address):
     params = {
