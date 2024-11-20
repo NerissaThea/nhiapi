@@ -14,7 +14,7 @@ load_dotenv()
 app = Flask(__name__)
 
 # Kích hoạt CORS
-CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}})
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 # Thiết lập logging
 logging.basicConfig(level=logging.DEBUG)
@@ -36,7 +36,6 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-    response.headers["Access-Control-Allow-Credentials"] = "true"
     return response
 
 # Route chính để kiểm tra API
@@ -50,13 +49,11 @@ def home():
 def get_transactions():
     """Fetch transactions for a given address."""
     if request.method == 'OPTIONS':
-        # Phản hồi preflight request
-        response = make_response(jsonify({"message": "Preflight request successful"}))
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        return response
+        response = jsonify({"message": "Preflight request successful"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        return response, 200
 
     start_time = time.time()  # Bắt đầu theo dõi thời gian xử lý
 
