@@ -1,55 +1,80 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from dotenv import load_dotenv
+import os
+import requests
+import traceback
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
 
-# Bật CORS để bỏ qua mọi chính sách kiểm tra
+# Configure CORS
 CORS(app, resources={
     r"/api/*": {
         "origins": ["https://jbiz.vercel.app"],
         "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"]
+        "allow_headers": ["Content-Type", "Authorization", "Accept"],
+        "expose_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": False,
+        "max_age": 600
     }
 })
 
-# Middleware thêm các tiêu đề CORS vào mọi phản hồi
+# Etherscan API configuration
+ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY")
+ETHERSCAN_API_URL = os.getenv("ETHERSCAN_API_URL", "https://api.etherscan.io/api")
+
+def fetch_transactions(address):
+    params = {
+        "module": "account",
+        "action": "txlist",
+        "address": address,
+        "startblock": 0,
+        "endblock": 99999999,
+        "sort": "desc",
+        "apikey": ETHERSCAN_API_KEY
+    }
+    response = requests.get(ETHERSCAN_API_URL, params=params)
+    response.raise_for_status()  # This will raise an exception for HTTP errors
+    data = response.json()
+    if data["status"] != "1":
+        raise Exception(f"Etherscan API error: {data.get('message', 'Unknown error')}")
+    return data["result"]
+
+@app.errorhandler(Exception)
+def handle_error(error):
+    print(f"Error occurred: {error}")
+    print(traceback.format_exc())
+    response = jsonify({
+        "error": str(error),
+        "status": "error"
+    })
+    return response, 500
+
 @app.after_request
-def add_cors_headers(response):
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"]
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"]
-    response.headers["Access-Control-Allow-Credentials"] = "true"
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', 'https://jbiz.vercel.app')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
     return response
 
-# Endpoint chính để test API
-@app.route("/", methods=["GET"])
-def home():
-    return jsonify({"message": "CORS is completely bypassed. API is running!"})
-
-# Endpoint trả về dữ liệu giao dịch mẫu
-@app.route("/api/transactions", methods=["GET"])
+@app.route('/api/transactions', methods=['GET', 'OPTIONS'])
 def get_transactions():
-    address = request.args.get("address")
+    if request.method == 'OPTIONS':
+        return jsonify({"status": "ok"}), 200
+
+    address = request.args.get('address')
     if not address:
-        return jsonify({"error": "Address is required"}), 400
+        return jsonify({"error": "Address parameter is required"}), 400
 
-    # Dữ liệu giao dịch mẫu
-    transactions = [
-        {"from": "0xABC123", "to": "0xDEF456", "amount": 1.23, "hash": "0xHASH1"},
-        {"from": "0xGHI789", "to": "0xJKL012", "amount": 2.34, "hash": "0xHASH2"}
-    ]
+    try:
+        transactions = fetch_transactions(address)
+        return jsonify({"transactions": transactions, "status": "success"}), 200
+    except Exception as e:
+        print(f"Error fetching transactions: {e}")
+        return jsonify({"error": str(e), "status": "error"}), 500
 
-    return jsonify({"transactions": transactions}), 200
-
-# Xử lý preflight requests (OPTIONS)
-@app.route("/api/transactions", methods=["OPTIONS"])
-def options_transactions():
-    response = jsonify({"message": "Preflight request successful"})
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"]
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"]
-    response.headers["Access-Control-Allow-Credentials"] = "true"
-    return response, 200
-
-if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+if __name__ == '__main__':
+    app.run(debug=True)
