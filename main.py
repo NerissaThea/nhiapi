@@ -7,7 +7,7 @@ import time
 from flask_cors import CORS
 import logging
 
-# Load các biến môi trường từ .env
+# Load các biến môi trường từ .envs
 load_dotenv()
 
 # Khởi tạo Flask app
