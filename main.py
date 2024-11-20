@@ -26,6 +26,9 @@ CORS(app, resources={
 ETHERSCAN_API_KEY = os.getenv("IGVQMMEFYD8K2DK22ZTFV6WK1RH8KP98IS")
 ETHERSCAN_API_URL = os.getenv("https://api.etherscan.io/api")
 
+if not ETHERSCAN_API_KEY or not ETHERSCAN_API_URL:
+    raise ValueError("ETHERSCAN_API_KEY and ETHERSCAN_API_URL must be set in environment variables")
+
 def fetch_transactions(address):
     params = {
         "module": "account",
@@ -36,12 +39,16 @@ def fetch_transactions(address):
         "sort": "desc",
         "apikey": ETHERSCAN_API_KEY
     }
-    response = requests.get(ETHERSCAN_API_URL, params=params)
-    response.raise_for_status()  # This will raise an exception for HTTP errors
-    data = response.json()
-    if data["status"] != "1":
-        raise Exception(f"Etherscan API error: {data.get('message', 'Unknown error')}")
-    return data["result"]
+    try:
+        response = requests.get(ETHERSCAN_API_URL, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        if data["status"] != "1":
+            raise Exception(f"Etherscan API error: {data.get('message', 'Unknown error')}")
+        return data["result"]
+    except requests.RequestException as e:
+        print(f"Request error: {e}")
+        raise Exception(f"Failed to fetch data from Etherscan: {e}")
 
 @app.errorhandler(Exception)
 def handle_error(error):
@@ -60,6 +67,10 @@ def after_request(response):
     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
     return response
 
+@app.route('/')
+def home():
+    return jsonify({"status": "API is running", "version": "1.0"})
+
 @app.route('/api/transactions', methods=['GET', 'OPTIONS'])
 def get_transactions():
     if request.method == 'OPTIONS':
@@ -67,7 +78,7 @@ def get_transactions():
 
     address = request.args.get('address')
     if not address:
-        return jsonify({"error": "Address parameter is required"}), 400
+        return jsonify({"error": "Address parameter is required", "status": "error"}), 400
 
     try:
         transactions = fetch_transactions(address)
@@ -77,4 +88,5 @@ def get_transactions():
         return jsonify({"error": str(e), "status": "error"}), 500
 
 if __name__ == '__main__':
+    print(f"API URL configured as: {ETHERSCAN_API_URL}")
     app.run(debug=True)
