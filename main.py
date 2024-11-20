@@ -4,7 +4,13 @@ from flask_cors import CORS
 app = Flask(__name__)
 
 # Bật CORS để bỏ qua mọi chính sách kiểm tra
-CORS(app, supports_credentials=True)
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["https://jbiz.vercel.app"],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 
 # Middleware thêm các tiêu đề CORS vào mọi phản hồi
 @app.after_request
