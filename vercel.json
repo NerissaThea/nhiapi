@@ -8,7 +8,7 @@
   ],
   "routes": [
     {
-      "src": "/api/transaction",
+      "src": "/api/transactions",
       "dest": "main.py"
     }
   ]
