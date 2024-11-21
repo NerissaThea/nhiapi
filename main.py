@@ -1,92 +1,72 @@
-from flask import Flask, jsonify, request
-from flask_cors import CORS
+from flask import Flask, jsonify, request, make_response
+from database_connection import connect_to_neo4j  # Hàm kết nối tới Neo4j
+from etherscan_to_neo4j import fetch_and_save_transactions  # Hàm xử lý giao dịch từ Etherscan
 from dotenv import load_dotenv
 import os
-import requests
-import traceback
+import time
+from flask_cors import CORS
 
-# Load environment variables
+# Load các biến môi trường từ .env
 load_dotenv()
 
+# Khởi tạo Flask app
 app = Flask(__name__)
 
-# Configure CORS
-CORS(app, resources={
-    r"/api/*": {
-        "origins": ["https://jbiz.vercel.app"],
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization", "Accept"],
-        "expose_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": False,
-        "max_age": 600
-    }
-})
+CORS(app, resources={r"/*": {"origins": "*"}})
 
-# Etherscan API configuration
-ETHERSCAN_API_KEY = os.getenv("IGVQMMEFYD8K2DK22ZTFV6WK1RH8KP98IS")
-ETHERSCAN_API_URL = os.getenv("https://api.etherscan.io/api")
+# Kết nối với Neo4j
+NEO4J_URI = os.getenv("NEO4J_URI", "neo4j+s://aadff3f9.databases.neo4j.io")
+NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
 
-if not ETHERSCAN_API_KEY or not ETHERSCAN_API_URL:
-    raise ValueError("ETHERSCAN_API_KEY and ETHERSCAN_API_URL must be set in environment variables")
+try:
+    neo4j_driver = connect_to_neo4j(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
+    print("Connected to Neo4j successfully!")
+except Exception as e:
+    print(f"Failed to connect to Neo4j: {e}")
 
-def fetch_transactions(address):
-    params = {
-        "module": "account",
-        "action": "txlist",
-        "address": address,
-        "startblock": 0,
-        "endblock": 99999999,
-        "sort": "desc",
-        "apikey": ETHERSCAN_API_KEY
-    }
-    try:
-        response = requests.get(ETHERSCAN_API_URL, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        if data["status"] != "1":
-            raise Exception(f"Etherscan API error: {data.get('message', 'Unknown error')}")
-        return data["result"]
-    except requests.RequestException as e:
-        print(f"Request error: {e}")
-        raise Exception(f"Failed to fetch data from Etherscan: {e}")
-
-@app.errorhandler(Exception)
-def handle_error(error):
-    print(f"Error occurred: {error}")
-    print(traceback.format_exc())
-    response = jsonify({
-        "error": str(error),
-        "status": "error"
-    })
-    return response, 500
-
+# Middleware thêm tiêu đề CORS
 @app.after_request
-def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', 'https://jbiz.vercel.app')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
     return response
 
-@app.route('/')
+@app.route('/', methods=['GET'])
 def home():
-    return jsonify({"status": "API is running", "version": "1.0"})
+    """Root route to verify API is running."""
+    return jsonify({"message": "API is running!"})
 
 @app.route('/api/transactions', methods=['GET', 'OPTIONS'])
 def get_transactions():
+    """Fetch transactions for a given address."""
     if request.method == 'OPTIONS':
-        return jsonify({"status": "ok"}), 200
-
-    address = request.args.get('address')
-    if not address:
-        return jsonify({"error": "Address parameter is required", "status": "error"}), 400
+        # Phản hồi preflight request
+        response = make_response(jsonify({"message": "Preflight request successful"}))
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return response
+    start_time = time.time()  # Bắt đầu theo dõi thời gian xử lý
 
     try:
-        transactions = fetch_transactions(address)
-        return jsonify({"transactions": transactions, "status": "success"}), 200
+        address = request.args.get('address')
+        if not address:
+            return jsonify({"error": "Address is required"}), 400
+
+        # Fetch transaction data and save to Neo4j
+        transactions = fetch_and_save_transactions(address)
+        processing_time = time.time() - start_time  # Kết thúc theo dõi
+        print(f"Processed {len(transactions)} transactions for address {address} in {processing_time:.2f} seconds")
+
+        # Return transactions as JSON response
+        return jsonify({"success": True, "transactions": transactions}), 200
+
     except Exception as e:
-        print(f"Error fetching transactions: {e}")
-        return jsonify({"error": str(e), "status": "error"}), 500
+        # Xử lý lỗi nếu xảy ra
+        print(f"Error processing request for address {address}: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    print(f"API URL configured as: {ETHERSCAN_API_URL}")
-    app.run(debug=True)
+    app.run(debug=True, port=5001)  # Local development port
