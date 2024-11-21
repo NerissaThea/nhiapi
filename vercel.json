@@ -9,12 +9,7 @@
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "main.py",
-      "headers": {
-        "Access-Control-Allow-Origin": "https://jbiz.vercel.app",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization"
-      }
+      "dest": "main.py"
     }
   ]
 }
